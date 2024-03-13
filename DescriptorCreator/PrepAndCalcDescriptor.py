@@ -7,6 +7,8 @@ from rdkit.Chem import AllChem
 
 from DescriptorCreator.GraphChargeShell import GraphChargeShell
 
+# from .GraphChargeShell import GraphChargeShell
+
 # xTB path and calc setup
 # path = os.getcwd()
 # XTBHOME = os.path.join(path, 'dep/xtb-6.4.0')
@@ -240,11 +242,14 @@ class Generator:
         # Create descriptor vector only for the provided atom sites
         atom_indices = []
         descriptor_vector = []
+        mapper_vector = []
         for atom in self.rdkit_mol.GetAtoms():
             if atom.GetIdx() in atom_sites:
                 atom_indices.append(atom.GetIdx())
-
-                atom_descriptor = self.descriptor_properties.calculate_elements(atom)
+                atom_descriptor, mapper = self.descriptor_properties.calculate_elements(
+                    atom
+                )
                 descriptor_vector.append(atom_descriptor)
+                mapper_vector.append(mapper)
 
-        return atom_indices, descriptor_vector
+        return atom_indices, descriptor_vector, mapper_vector

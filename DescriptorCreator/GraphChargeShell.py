@@ -32,6 +32,7 @@ class GraphChargeShell(DescriptorElement):
 
         # set the atomic charge as the first element
         descriptor_elements = [float(atom.GetProp(charge))]
+        mapper = [atom.GetIdx()]
         contained_atoms = set()  # !! Indices need to be stored because obviously rdkit does not return references to same object
         contained_atoms.add(atom.GetIdx())
         last_shell.append(atom)
@@ -58,14 +59,21 @@ class GraphChargeShell(DescriptorElement):
                 current_shell = current_shell + block
                 block = []
                 length = 3  # from the second shell on atoms only have 3 members because one is already contained
+
+                indices_block = [atm.GetIdx() for atm in current_shell]
+                contained_atoms.update(indices_block)
+
             indices = [atm.GetIdx() for atm in current_shell]
-            contained_atoms.update(indices)
+            #contained_atoms.update(indices)
             descriptor_elements += [float(atm.GetProp(charge)) for atm in current_shell]
+            mapper += indices
             last_shell = current_shell
             current_shell = []
         assert len(descriptor_elements) == self._calculate_length(self.n_shells), '{}  {}'.format(len(
             descriptor_elements),  self._calculate_length(self.n_shells))  # Debugging assertion
-        return descriptor_elements
+        
+        #print('REMEMBER TO REFIX BLOCK!!!')
+        return descriptor_elements, mapper
 
     @classmethod
     def _calculate_length(cls, n):
