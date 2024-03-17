@@ -1,28 +1,42 @@
 import os
 import subprocess
 import datetime
-
+from pathlib import Path
+import re
 from rdkit import Chem
 from rdkit.Chem import AllChem
 
 from DescriptorCreator.GraphChargeShell import GraphChargeShell
 
-# from .GraphChargeShell import GraphChargeShell
+
+def extract_version(dir_name):
+    # Function to extract version numbers from directory names
+    match = re.findall(r"\d+", dir_name)
+    return tuple(map(int, match)) if match else (0,)
+
+
+# Go to the base directory pKalculator
+base_dir = Path(__file__).resolve().parent.parent.parent
+print(f"base dir is: {base_dir}")
+# Filter out the directories that contain "xtb-"
+xtb_dirs = [
+    item
+    for item in base_dir.joinpath("dep").iterdir()
+    if "xtb-" in item.name and item.is_dir()
+]
+# Sort the directories by version number
+xtb_dirs_sorted = sorted(
+    xtb_dirs, key=lambda dir: extract_version(dir.name), reverse=True
+)
+# The directory with the highest version number is the first one in the sorted list
+highest_version_xtb = xtb_dirs_sorted[0] if xtb_dirs_sorted else None
 
 # xTB path and calc setup
-# path = os.getcwd()
-# XTBHOME = os.path.join(path, 'dep/xtb-6.4.0')
-# XTBPATH = os.path.join(path, 'dep/xtb-6.4.0/share/xtb')
-# MANPATH = os.path.join(path, 'dep/xtb-6.4.0/share/man')
-# LD_LIBRARY_PATH = os.path.join(path, 'dep/xtb-6.4.0/lib')
-
-# path = os.getcwd().replace("/src/smi2gcs", "")
-path = os.path.join(os.path.expanduser("~"), "src/smi2gcs")
-path_xtb = os.path.join(os.path.expanduser("~"), "pKalculator")
-XTBHOME = os.path.join(path_xtb, "dep/xtb-6.6.0")
-XTBPATH = os.path.join(path_xtb, "dep/xtb-6.6.0/share/xtb")
-MANPATH = os.path.join(path_xtb, "dep/xtb-6.6.0/share/man")
-LD_LIBRARY_PATH = os.path.join(path_xtb, "dep/xtb-6.6.0/lib")
+base_dir = str(base_dir)
+XTBHOME = str(highest_version_xtb)
+XTBPATH = str(highest_version_xtb.joinpath("share/xtb"))
+MANPATH = str(highest_version_xtb.joinpath("share/man"))
+LD_LIBRARY_PATH = str(highest_version_xtb.joinpath("lib"))
 
 OMP_NUM_THREADS = "1"
 MKL_NUM_THREADS = "1"
@@ -55,13 +69,13 @@ class Generator:
 
     def _make_SQMroot(self):
         """
-        Make a pathname for the SQM calculations (xTB 6.4.0)
+        Make a pathname for the SQM calculations (xTB 6.6.0)
         :return: SQMroot
         """
         cwd = os.getcwd()
         # SQMroot = cwd + '/' + str(datetime.datetime.now()).split(' ')[0] + '-charges-xtb_6.4.1-calculations-to-descriptors'
-        SQMroot = cwd + "/" + "calc_smi2gcs"
-        print(f"SQM folder is: \n{SQMroot}")
+        SQMroot = cwd + "/data/" + "calc_smi2gcs"
+        print(f"Saving descriptor calculations to: \n{SQMroot}")
         return SQMroot
 
     def get_best_structure(self, smi, n_confs=20):
@@ -182,25 +196,72 @@ class Generator:
 
         # Generate xyz file from SMILES
         self.generate_3Dxyz_v2(smi, name)
-
+        # print(f"xyz file path: {self.xyz_file_path}")
         # Get molecule properties
         chrg = Chem.GetFormalCharge(self.rdkit_mol)
         spin = 0  # spin hardcoded to zero
-
         # Run xTB calc
         if optimize:
-            cmd = f"{XTBHOME}/bin/xtb --gfn 1 {self.xyz_file_path} --opt --lmo --chrg {chrg} --uhf {spin}"  # TODO! add connectivity check!
+            # cmd = f"{XTBHOME}/bin/xtb --gfn 1 {self.xyz_file_path} --opt --lmo --chrg {chrg} --uhf {spin}"  # TODO! add connectivity check!
+            try:
+                cmd = f"{XTBHOME}/bin/xtb --gfn 1 {self.xyz_file_path} --opt --lmo --chrg {chrg} --uhf {spin}"  # TODO! add connectivity check!
+                proc = subprocess.Popen(
+                    cmd.split(),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                    cwd=self.mol_calc_path,
+                )
+                output = proc.communicate()[0]
+            except subprocess.CalledProcessError:
+                try:
+                    cmd = f"xtb --gfn 1 {self.xyz_file_path} --opt --lmo --chrg {chrg} --uhf {spin}"
+                    proc = subprocess.Popen(
+                        cmd.split(),
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.DEVNULL,
+                        text=True,
+                        cwd=self.mol_calc_path,
+                    )
+                    output = proc.communicate()[0]
+                except subprocess.CalledProcessError as e:
+                    print(f"Error: {e}")
+                    return None
         else:
-            cmd = f"{XTBHOME}/bin/xtb --gfn 1 {self.xyz_file_path} --lmo --chrg {chrg} --uhf {spin}"
+            # cmd = f"{XTBHOME}/bin/xtb --gfn 1 {self.xyz_file_path} --lmo --chrg {chrg} --uhf {spin}"
+            try:
+                cmd = f"{XTBHOME}/bin/xtb --gfn 1 {self.xyz_file_path} --lmo --chrg {chrg} --uhf {spin}"
+                proc = subprocess.Popen(
+                    cmd.split(),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                    cwd=self.mol_calc_path,
+                )
+                output = proc.communicate()[0]
+            except subprocess.CalledProcessError:
+                try:
+                    cmd = f"xtb --gfn 1 {self.xyz_file_path} --lmo --chrg {chrg} --uhf {spin}"
+                    proc = subprocess.Popen(
+                        cmd.split(),
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.DEVNULL,
+                        text=True,
+                        cwd=self.mol_calc_path,
+                    )
+                    output = proc.communicate()[0]
+                except subprocess.CalledProcessError as e:
+                    print(f"Error: {e}")
+                    return None
 
-        proc = subprocess.Popen(
-            cmd.split(),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            cwd=self.mol_calc_path,
-        )
-        output = proc.communicate()[0]
+        # proc = subprocess.Popen(
+        #     cmd.split(),
+        #     stdout=subprocess.PIPE,
+        #     stderr=subprocess.DEVNULL,
+        #     text=True,
+        #     cwd=self.mol_calc_path,
+        # )
+        # output = proc.communicate()[0]
 
         # Save calc output
         if save_output:
